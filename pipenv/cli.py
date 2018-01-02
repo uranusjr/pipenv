@@ -7,7 +7,6 @@ import shutil
 import signal
 import time
 import tempfile
-from glob import glob
 import json as simplejson
 
 import urllib3
@@ -22,7 +21,6 @@ import requests
 import pip
 import pipfile
 import pipdeptree
-import requirements
 import semver
 import flake8.main.cli
 from pipreqs import pipreqs
@@ -36,7 +34,7 @@ from .utils import (
     proper_case, pep423_name, split_file, merge_deps, resolve_deps, shellquote, is_vcs,
     python_version, suggest_package, find_windows_executable, is_file,
     prepare_pip_source_args, temp_environ, is_valid_url, download_file,
-    get_requirement, need_update_check, touch_update_stamp
+    get_requirement, need_update_check, touch_update_stamp, system_which,
 )
 from .__version__ import __version__
 from . import pep508checker, progress
@@ -44,12 +42,13 @@ from . import environments
 from .environments import (
     PIPENV_COLORBLIND, PIPENV_NOSPIN, PIPENV_SHELL_FANCY,
     PIPENV_VENV_IN_PROJECT, PIPENV_TIMEOUT, PIPENV_SKIP_VALIDATION,
-    PIPENV_HIDE_EMOJIS, PIPENV_INSTALL_TIMEOUT, PYENV_ROOT,
+    PIPENV_HIDE_EMOJIS, PIPENV_INSTALL_TIMEOUT,
     PYENV_INSTALLED, PIPENV_YES, PIPENV_DONT_LOAD_ENV,
     PIPENV_DEFAULT_PYTHON_VERSION, PIPENV_MAX_SUBPROCESS,
     PIPENV_DONT_USE_PYENV, SESSION_IS_INTERACTIVE, PIPENV_USE_SYSTEM,
     PIPENV_DOTENV_LOCATION, PIPENV_SHELL
 )
+from .pythonfinders import find_python, PythonInstallationNotFoundError
 
 # Backport required for earlier versions of Python.
 if sys.version_info < (3, 3):
@@ -354,34 +353,10 @@ def find_a_system_python(python):
         return system_which(python)
     elif os.path.isabs(python):
         return python
-    else:
-        possibilities = [
-            'python',
-            'python{0}'.format(python[0]),
-        ]
-        if len(python) >= 2:
-            possibilities.extend(
-                [
-                    'python{0}{1}'.format(python[0], python[2]),
-                    'python{0}.{1}'.format(python[0], python[2]),
-                    'python{0}.{1}m'.format(python[0], python[2])
-                ]
-            )
-
-        # Reverse the list, so we find specific ones first.
-        possibilities = reversed(possibilities)
-
-        for possibility in possibilities:
-            # Windows compatibility.
-            if os.name == 'nt':
-                possibility = '{0}.exe'.format(possibility)
-
-            pythons = system_which(possibility, mult=True)
-
-            for p in pythons:
-                version = python_version(p)
-                if (version or '').startswith(python):
-                    return p
+    try:
+        find_python(python)
+    except PythonInstallationNotFoundError:
+        return None
 
 
 def ensure_python(three=None, python=None):
@@ -394,37 +369,7 @@ def ensure_python(three=None, python=None):
         )
         sys.exit(1)
 
-    def activate_pyenv():
-        """Adds all pyenv installations to the PATH."""
-        if PYENV_INSTALLED:
-            if PYENV_ROOT:
-                pyenv_paths = {}
-                for found in glob(
-                    '{0}{1}versions{1}*'.format(
-                        PYENV_ROOT,
-                        os.sep
-                    )
-                ):
-                    pyenv_paths[os.path.split(found)[1]] = '{0}{1}bin'.format(found, os.sep)
-
-                for version_str, pyenv_path in pyenv_paths.items():
-                    version = pip._vendor.packaging.version.parse(version_str)
-                    if version.is_prerelease and pyenv_paths.get(version.base_version):
-                        continue
-                    add_to_path(pyenv_path)
-            else:
-                click.echo(
-                    '{0}: PYENV_ROOT is not set. New python paths will '
-                    'probably not be exported properly after installation.'
-                    ''.format(
-                        crayons.red('Warning', bold=True),
-                    ), err=True
-                )
-
     global USING_DEFAULT_PYTHON
-
-    # Add pyenv paths to PATH.
-    activate_pyenv()
 
     path_to_python = None
     USING_DEFAULT_PYTHON = (three is None and not python)
@@ -1485,34 +1430,6 @@ def which_pip(allow_global=False):
                 return where
 
     return which('pip')
-
-
-def system_which(command, mult=False):
-    """Emulates the system's which. Returns None if not found."""
-
-    _which = 'which -a' if not os.name == 'nt' else 'where'
-
-    c = delegator.run('{0} {1}'.format(_which, command))
-    try:
-        # Which Not found...
-        if c.return_code == 127:
-            click.echo(
-                '{}: the {} system utility is required for Pipenv to find Python installations properly.'
-                '\n  Please install it.'.format(
-                    crayons.red('Warning', bold=True),
-                    crayons.red(_which)
-                ), err=True
-            )
-        assert c.return_code == 0
-    except AssertionError:
-        return None if not mult else []
-
-    result = c.out.strip() or c.err.strip()
-
-    if mult:
-        return result.split('\n')
-    else:
-        return result.split('\n')[0]
 
 
 def format_help(help):
