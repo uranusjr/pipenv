@@ -1,3 +1,5 @@
+import os
+
 from pip._vendor.packaging.version import parse as parse_version, Version
 from pipenv.environments import PYENV_INSTALLED
 
@@ -10,6 +12,9 @@ class PythonInstallationNotFoundError(Exception):
 
 
 def iter_finders():
+    if os.name == 'nt':
+        from . import pep514
+        yield pep514
     if PYENV_INSTALLED:
         from . import pyenv
         yield pyenv
