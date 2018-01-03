@@ -32,6 +32,19 @@ def guess_exe_location(install_path_key):
 
 
 def iter_match(version):
+    """Iterate through matching CPython installations in the registry.
+
+    A 2-tuple is generated. The first item is the full path to the executable;
+    the second is a key used to choose the best entry when multiple matches
+    occur.
+
+    The best match is chosen with the following logic:
+
+    * The highest matching version wins (e.g. 3.6 over 3.5 if given "3").
+    * The native build wins. This is not always accurate since there's no good
+      way (AFAIK) to tell under certain edge cases for CPython before 3.5.
+    * The per-user installation wins over machine-wide.
+    """
     for priority, (root, prefix, not_cross) in enumerate(PYTHON_KEY_PATHS):
         try:
             key = winreg.OpenKey(root, '{}\\Python\\PythonCore'.format(prefix))
