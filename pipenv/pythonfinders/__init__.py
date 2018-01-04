@@ -9,8 +9,6 @@ from pipenv.environments import (
     PIPENV_DONT_USE_PYENV, PIPENV_YES,
 )
 
-from pipenv.utils import python_version
-
 from . import pathname
 
 
