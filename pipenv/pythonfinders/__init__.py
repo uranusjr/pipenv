@@ -40,7 +40,11 @@ def find_python(name, try_to_install=True):
     if not isinstance(version, Version):    # Only support X[.Y[.Z]] schemes.
         raise PythonInstallationNotFoundError(name)
     for finder in iter_finders():
-        python = finder.find_python(version)
+        try:
+            find = finder.find_python
+        except AttributeError:
+            continue
+        python = find(version)
         if python:
             return python
 
